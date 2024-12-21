@@ -134,3 +134,8 @@ public class KMeansMapReduce {
 32.7,86.5,82.1
 43.1,54.8,49.8
 25.3,25.7,79.4
+
+hadoop jar /home/cloudera/KMeansMapReduce.jar KMeansMapReduce \
+/user/cloudera/inputkmeans/mall_customers.csv \
+/user/cloudera/outputkmeans \
+/user/cloudera/inputkmeans/centroids.txt
