@@ -122,9 +122,15 @@ public class KMeansMapReduce {
         job.setOutputKeyClass(IntWritable.class);
         job.setOutputValueClass(Text.class);
 
+
         FileInputFormat.addInputPath(job, inputPath);
         FileOutputFormat.setOutputPath(job, outputPath);
 
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+45.2,26.3,20.9
+40.3,87.4,18.2
+32.7,86.5,82.1
+43.1,54.8,49.8
+25.3,25.7,79.4
