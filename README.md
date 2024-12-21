@@ -5,130 +5,123 @@ import org.apache.hadoop.mapreduce.*;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
-import java.io.*;
-import java.util.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
-public class KMeansMapReduce {
+public class KMeansClustering {
 
-    // Class for storing a cluster center
-    public static class ClusterCenter {
-        double age, income, spending;
-
-        public ClusterCenter(double age, double income, double spending) {
-            this.age = age;
-            this.income = income;
-            this.spending = spending;
-        }
-
-        public static ClusterCenter fromString(String str) {
-            String[] parts = str.split(",");
-            return new ClusterCenter(
-                Double.parseDouble(parts[0]),
-                Double.parseDouble(parts[1]),
-                Double.parseDouble(parts[2])
-            );
-        }
-
-        public String toString() {
-            return age + "," + income + "," + spending;
-        }
-
-        public double distanceTo(ClusterCenter other) {
-            return Math.sqrt(
-                Math.pow(this.age - other.age, 2) +
-                Math.pow(this.income - other.income, 2) +
-                Math.pow(this.spending - other.spending, 2)
-            );
-        }
-    }
-
-    // Mapper Class
     public static class KMeansMapper extends Mapper<LongWritable, Text, IntWritable, Text> {
-        private List<ClusterCenter> centers = new ArrayList<>();
+        private List<double[]> centroids = new ArrayList<>();
 
         @Override
         protected void setup(Context context) throws IOException {
-            Path centroidsPath = new Path(context.getConfiguration().get("centroids.path"));
-            try (BufferedReader reader = new BufferedReader(new FileReader(centroidsPath.toString()))) {
+            // Read centroids from file
+            Path[] cacheFiles = context.getLocalCacheFiles();
+            try (BufferedReader reader = new BufferedReader(new FileReader(cacheFiles[0].toString()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    centers.add(ClusterCenter.fromString(line));
+                    String[] tokens = line.split(",");
+                    double[] centroid = new double[tokens.length];
+                    for (int i = 0; i < tokens.length; i++) {
+                        centroid[i] = Double.parseDouble(tokens[i]);
+                    }
+                    centroids.add(centroid);
                 }
             }
         }
 
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            if (key.get() == 0 && value.toString().contains("CustomerID")) return; // Skip header
+            // Parse input data
+            String[] tokens = value.toString().split(",");
+            double[] point = new double[3];
+            point[0] = Double.parseDouble(tokens[2]); // Age
+            point[1] = Double.parseDouble(tokens[3]); // Annual Income
+            point[2] = Double.parseDouble(tokens[4]); // Spending Score
 
-            String[] fields = value.toString().split(",");
-            double age = Double.parseDouble(fields[2]);
-            double income = Double.parseDouble(fields[3]);
-            double spending = Double.parseDouble(fields[4]);
-
-            ClusterCenter customer = new ClusterCenter(age, income, spending);
-            int nearestCenterId = -1;
-            double nearestDistance = Double.MAX_VALUE;
-
-            for (int i = 0; i < centers.size(); i++) {
-                double distance = customer.distanceTo(centers.get(i));
-                if (distance < nearestDistance) {
-                    nearestDistance = distance;
-                    nearestCenterId = i;
+            // Find closest centroid
+            int closestCentroid = 0;
+            double minDistance = Double.MAX_VALUE;
+            for (int i = 0; i < centroids.size(); i++) {
+                double distance = 0;
+                for (int j = 0; j < point.length; j++) {
+                    distance += Math.pow(point[j] - centroids.get(i)[j], 2);
+                }
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestCentroid = i;
                 }
             }
 
-            context.write(new IntWritable(nearestCenterId), new Text(customer.toString()));
+            // Emit centroid ID and point
+            context.write(new IntWritable(closestCentroid), new Text(value.toString()));
         }
     }
 
-    // Reducer Class
     public static class KMeansReducer extends Reducer<IntWritable, Text, IntWritable, Text> {
         @Override
-        protected void reduce(IntWritable key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-            double sumAge = 0, sumIncome = 0, sumSpending = 0;
-            int count = 0;
-
+        protected void reduce(IntWritable key, Iterable<Text> values, Context context)
+                throws IOException, InterruptedException {
+            List<double[]> points = new ArrayList<>();
             for (Text value : values) {
-                ClusterCenter customer = ClusterCenter.fromString(value.toString());
-                sumAge += customer.age;
-                sumIncome += customer.income;
-                sumSpending += customer.spending;
-                count++;
+                String[] tokens = value.toString().split(",");
+                double[] point = new double[3];
+                point[0] = Double.parseDouble(tokens[2]); // Age
+                point[1] = Double.parseDouble(tokens[3]); // Annual Income
+                point[2] = Double.parseDouble(tokens[4]); // Spending Score
+                points.add(point);
             }
 
-            ClusterCenter newCenter = new ClusterCenter(sumAge / count, sumIncome / count, sumSpending / count);
-            context.write(key, new Text(newCenter.toString()));
+            // Compute new centroid
+            double[] newCentroid = new double[3];
+            for (double[] point : points) {
+                for (int i = 0; i < point.length; i++) {
+                    newCentroid[i] += point[i];
+                }
+            }
+            for (int i = 0; i < newCentroid.length; i++) {
+                newCentroid[i] /= points.size();
+            }
+
+            // Emit new centroid
+            StringBuilder centroidBuilder = new StringBuilder();
+            for (int i = 0; i < newCentroid.length; i++) {
+                centroidBuilder.append(newCentroid[i]);
+                if (i < newCentroid.length - 1) {
+                    centroidBuilder.append(",");
+                }
+            }
+            context.write(key, new Text(centroidBuilder.toString()));
         }
     }
 
-    // Driver Class
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
-        conf.set("centroids.path", args[2]);
-
-        Path inputPath = new Path(args[0]);
-        Path outputPath = new Path(args[1]);
-
         Job job = Job.getInstance(conf, "KMeans Clustering");
-        job.setJarByClass(KMeansMapReduce.class);
+        job.setJarByClass(KMeansClustering.class);
 
+        // Set Mapper and Reducer classes
         job.setMapperClass(KMeansMapper.class);
         job.setReducerClass(KMeansReducer.class);
 
-        job.setMapOutputKeyClass(IntWritable.class);
-        job.setMapOutputValueClass(Text.class);
-
+        // Set output key and value types
         job.setOutputKeyClass(IntWritable.class);
         job.setOutputValueClass(Text.class);
 
+        // Set input and output paths
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
-        FileInputFormat.addInputPath(job, inputPath);
-        FileOutputFormat.setOutputPath(job, outputPath);
+        // Add centroids file to cache
+        job.addCacheFile(new Path(args[2]).toUri());
 
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
 45.2,26.3,20.9
 40.3,87.4,18.2
 32.7,86.5,82.1
