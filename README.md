@@ -139,3 +139,15 @@ hadoop jar /home/cloudera/KMeansMapReduce.jar KMeansMapReduce \
 /user/cloudera/inputkmeans/mall_customers.csv \
 /user/cloudera/outputkmeans \
 /user/cloudera/inputkmeans/centroids.txt
+
+hdfs dfs -ls /user/cloudera/inputkmeans
+
+hdfs dfs -mkdir -p /user/cloudera/inputkmeans/
+hdfs dfs -put /home/cloudera/mall_customers.csv /user/cloudera/inputkmeans/
+hdfs dfs -put /home/cloudera/centroids.txt /user/cloudera/inputkmeans/
+
+hdfs dfs -ls /user/cloudera/inputkmeans/
+
+hdfs dfs -rm -r /user/cloudera/outputkmeans/
+
+
