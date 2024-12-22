@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class KMeans {
+public class KMeansClustering {
 
     public static class KMeansMapper extends Mapper<Object, Text, Text, Text> {
         private List<double[]> centroids = new ArrayList<>();
@@ -99,7 +99,7 @@ public class KMeans {
         conf.set("centroids", "45.2,26.3,20.9;40.3,87.4,18.2;32.7,86.5,82.1;43.1,54.8,49.8;25.3,25.7,79.4");
 
         Job job = Job.getInstance(conf, "KMeans Clustering");
-        job.setJarByClass(KMeans.class);
+        job.setJarByClass(KMeansClustering.class);
 
         job.setMapperClass(KMeansMapper.class);
         job.setReducerClass(KMeansReducer.class);
