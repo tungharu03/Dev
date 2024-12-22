@@ -147,6 +147,10 @@ SELECT * FROM kmeans_output;
 
 hdfs dfs -ls /user/cloudera/inputkmeans/
 
+hdfs dfs -chown hive:hive /outputcluster/part-r-00000
+hdfs dfs -chmod 755 /outputcluster/part-r-00000
+hdfs dfs -chmod -R 777 /user/hive/warehouse
+
 hdfs dfs -rm -r /user/cloudera/outputkmeans/
 
 
