@@ -154,3 +154,33 @@ hdfs dfs -chmod -R 777 /user/hive/warehouse
 hdfs dfs -rm -r /user/cloudera/outputkmeans/
 
 
+from collections import defaultdict
+
+# Đọc file đầu vào từ HDFS hoặc hệ thống cục bộ
+input_file = "outputcluster/part-r-00000"
+output_folder = "kmeans_clusters"  # Tạo thư mục đầu ra
+
+# Tạo thư mục đầu ra nếu chưa tồn tại
+import os
+os.makedirs(output_folder, exist_ok=True)
+
+# Tạo dictionary để lưu các cụm
+clusters = defaultdict(list)
+
+# Đọc file và phân loại theo cụm
+with open(input_file, "r") as f:
+    for line in f:
+        line = line.strip()
+        if not line:  # Bỏ qua dòng trống
+            continue
+        data, cluster_id = line.rsplit(" ", 1)
+        clusters[cluster_id].append(data)
+
+# Xuất mỗi cụm ra một file riêng
+for cluster_id, points in clusters.items():
+    output_file = os.path.join(output_folder, f"cluster_{cluster_id}.csv")
+    with open(output_file, "w") as f:
+        for point in points:
+            f.write(point + "\n")
+
+print(f"Cluster results saved to folder: {output_folder}")
