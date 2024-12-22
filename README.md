@@ -134,6 +134,17 @@ hdfs dfs -mkdir -p /user/cloudera/inputkmeans/
 hdfs dfs -put /home/cloudera/mall_customers.csv /user/cloudera/inputkmeans/
 hdfs dfs -put /home/cloudera/centroids.txt /user/cloudera/inputkmeans/
 
+CREATE TABLE kmeans_output (
+    centroid STRING,
+    cluster_id INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','; 
+
+LOAD DATA INPATH '/outputcluster/part-r-00000' INTO TABLE kmeans_output;
+SELECT * FROM kmeans_output;
+
+
 hdfs dfs -ls /user/cloudera/inputkmeans/
 
 hdfs dfs -rm -r /user/cloudera/outputkmeans/
