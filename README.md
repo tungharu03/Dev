@@ -9,64 +9,51 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 
-public class KMeansClustering {
+public class KMeans {
 
     public static class KMeansMapper extends Mapper<Object, Text, Text, Text> {
-
-        // Các centroid cố định
-        private static final double[][] centroids = {
-            {45.2, 26.3, 20.9},
-            {40.3, 87.4, 18.2},
-            {32.7, 86.5, 82.1},
-            {43.1, 54.8, 49.8},
-            {25.3, 25.7, 79.4}
-        };
+        private List<double[]> centroids = new ArrayList<>();
 
         @Override
-        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-            // Đọc dữ liệu từ file khách hàng
-            String[] tokens = value.toString().split(",");
-            int customerId = -1;
-            String gender = null;
-            double age = 0.0, annualIncome = 0.0, spendingScore = 0.0;
-
-            try {
-                customerId = Integer.parseInt(tokens[0]);
-                gender = tokens[1];
-                age = tryParseDouble(tokens[2]);
-                annualIncome = tryParseDouble(tokens[3]);
-                spendingScore = tryParseDouble(tokens[4]);
-            } catch (NumberFormatException e) {
-                System.err.println("Invalid data format for customer ID: " + customerId);
-                return;
+        protected void setup(Context context) throws IOException, InterruptedException {
+            String[] centroidStrings = context.getConfiguration().get("centroids").split(";\s*");
+            for (String centroid : centroidStrings) {
+                String[] values = centroid.split(",");
+                centroids.add(new double[]{
+                        Double.parseDouble(values[0]),
+                        Double.parseDouble(values[1]),
+                        Double.parseDouble(values[2])
+                });
             }
+        }
 
-            // Tính toán khoảng cách đến các centroid
+        @Override
+        protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+            if (value.toString().startsWith("CustomerID")) return; // Skip header
+
+            String[] fields = value.toString().split(",");
+            double age = Double.parseDouble(fields[2]);
+            double income = Double.parseDouble(fields[3]);
+            double score = Double.parseDouble(fields[4]);
+
+            double[] point = {age, income, score};
+            int closestCentroid = 0;
             double minDistance = Double.MAX_VALUE;
-            int closestCentroid = -1;
-            for (int i = 0; i < centroids.length; i++) {
-                double[] centroid = centroids[i];
-                double distance = calculateEuclideanDistance(new double[] {age, annualIncome, spendingScore}, centroid);
+
+            for (int i = 0; i < centroids.size(); i++) {
+                double distance = euclideanDistance(point, centroids.get(i));
                 if (distance < minDistance) {
                     minDistance = distance;
                     closestCentroid = i;
                 }
             }
 
-            // Emit kết quả, nhóm theo centroid
-            context.write(new Text("Centroid" + closestCentroid), value);
+            context.write(new Text(String.valueOf(closestCentroid)), value);
         }
 
-        private double tryParseDouble(String value) {
-            try {
-                return Double.parseDouble(value);
-            } catch (NumberFormatException e) {
-                return 0.0;
-            }
-        }
-
-        private double calculateEuclideanDistance(double[] point, double[] centroid) {
+        private double euclideanDistance(double[] point, double[] centroid) {
             double sum = 0.0;
             for (int i = 0; i < point.length; i++) {
                 sum += Math.pow(point[i] - centroid[i], 2);
@@ -77,29 +64,56 @@ public class KMeansClustering {
 
     public static class KMeansReducer extends Reducer<Text, Text, Text, Text> {
         @Override
-        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-            StringBuilder result = new StringBuilder();
-            result.append("\n");
+        protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+            List<double[]> points = new ArrayList<>();
+
             for (Text value : values) {
-                result.append(value.toString()).append("\n");
+                String[] fields = value.toString().split(",");
+                points.add(new double[]{
+                        Double.parseDouble(fields[2]),
+                        Double.parseDouble(fields[3]),
+                        Double.parseDouble(fields[4])
+                });
             }
-            context.write(key, new Text(result.toString()));
+
+            double[] newCentroid = calculateCentroid(points);
+            context.write(new Text(String.format("%.2f,%.2f,%.2f", newCentroid[0], newCentroid[1], newCentroid[2])), key);
+        }
+
+        private double[] calculateCentroid(List<double[]> points) {
+            double[] centroid = new double[3];
+            for (double[] point : points) {
+                for (int i = 0; i < point.length; i++) {
+                    centroid[i] += point[i];
+                }
+            }
+            for (int i = 0; i < centroid.length; i++) {
+                centroid[i] /= points.size();
+            }
+            return centroid;
         }
     }
 
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
+        conf.set("centroids", "45.2,26.3,20.9;40.3,87.4,18.2;32.7,86.5,82.1;43.1,54.8,49.8;25.3,25.7,79.4");
+
         Job job = Job.getInstance(conf, "KMeans Clustering");
-        job.setJarByClass(KMeansClustering.class);
+        job.setJarByClass(KMeans.class);
+
         job.setMapperClass(KMeansMapper.class);
         job.setReducerClass(KMeansReducer.class);
+
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
+
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
 
 
 
