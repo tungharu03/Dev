@@ -1,4 +1,5 @@
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -7,25 +8,40 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 public class KMeansClustering {
 
     public static class KMeansMapper extends Mapper<Object, Text, Text, Text> {
         private List<double[]> centroids = new ArrayList<>();
+        private final int K = 5; // Số cụm
 
         @Override
         protected void setup(Context context) throws IOException, InterruptedException {
-            String[] centroidStrings = context.getConfiguration().get("centroids").split(";\s*");
-            for (String centroid : centroidStrings) {
-                String[] values = centroid.split(",");
-                centroids.add(new double[]{
-                        Double.parseDouble(values[0]),
-                        Double.parseDouble(values[1]),
-                        Double.parseDouble(values[2])
-                });
+            Configuration conf = context.getConfiguration();
+            String centroidsPath = conf.get("centroidsPath");
+
+            if (centroidsPath != null) {
+                // Load centroids from HDFS if provided
+                FileSystem fs = FileSystem.get(conf);
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(new Path(centroidsPath))))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        String[] values = line.split(",");
+                        centroids.add(new double[]{
+                                Double.parseDouble(values[0]),
+                                Double.parseDouble(values[1]),
+                                Double.parseDouble(values[2])
+                        });
+                    }
+                }
+            } else {
+                throw new IOException("Centroids not provided. Ensure centroids are initialized.");
             }
         }
 
@@ -34,6 +50,8 @@ public class KMeansClustering {
             if (value.toString().startsWith("CustomerID")) return; // Skip header
 
             String[] fields = value.toString().split(",");
+            String customerID = fields[0];
+            String gender = fields[1];
             double age = Double.parseDouble(fields[2]);
             double income = Double.parseDouble(fields[3]);
             double score = Double.parseDouble(fields[4]);
@@ -50,7 +68,9 @@ public class KMeansClustering {
                 }
             }
 
-            context.write(new Text(String.valueOf(closestCentroid)), value);
+            // Output format: Cluster ID, Customer Information
+            context.write(new Text(String.valueOf(closestCentroid)),
+                    new Text(customerID + "," + gender + "," + age + "," + income + "," + score));
         }
 
         private double euclideanDistance(double[] point, double[] centroid) {
@@ -65,38 +85,19 @@ public class KMeansClustering {
     public static class KMeansReducer extends Reducer<Text, Text, Text, Text> {
         @Override
         protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-            List<double[]> points = new ArrayList<>();
-
             for (Text value : values) {
-                String[] fields = value.toString().split(",");
-                points.add(new double[]{
-                        Double.parseDouble(fields[2]),
-                        Double.parseDouble(fields[3]),
-                        Double.parseDouble(fields[4])
-                });
+                // Append cluster ID to customer info
+                context.write(value, new Text(key.toString()));
             }
-
-            double[] newCentroid = calculateCentroid(points);
-            context.write(new Text(String.format("%.2f,%.2f,%.2f", newCentroid[0], newCentroid[1], newCentroid[2])), key);
-        }
-
-        private double[] calculateCentroid(List<double[]> points) {
-            double[] centroid = new double[3];
-            for (double[] point : points) {
-                for (int i = 0; i < point.length; i++) {
-                    centroid[i] += point[i];
-                }
-            }
-            for (int i = 0; i < centroid.length; i++) {
-                centroid[i] /= points.size();
-            }
-            return centroid;
         }
     }
 
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
-        conf.set("centroids", "45.2,26.3,20.9;40.3,87.4,18.2;32.7,86.5,82.1;43.1,54.8,49.8;25.3,25.7,79.4");
+
+        // Thay đổi centroidsPath thành đường dẫn HDFS chứa centroids
+        String centroidsPath = "/path/to/initial_centroids.csv";
+        conf.set("centroidsPath", centroidsPath);
 
         Job job = Job.getInstance(conf, "KMeans Clustering");
         job.setJarByClass(KMeansClustering.class);
@@ -113,6 +114,7 @@ public class KMeansClustering {
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
 
 
 
