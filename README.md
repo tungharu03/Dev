@@ -13,21 +13,20 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 public class KMeansClustering {
 
     public static class KMeansMapper extends Mapper<Object, Text, Text, Text> {
         private List<double[]> centroids = new ArrayList<>();
-        private final int K = 5; // Số cụm
+        private int K; // Số cụm
 
         @Override
         protected void setup(Context context) throws IOException, InterruptedException {
             Configuration conf = context.getConfiguration();
-            String centroidsPath = conf.get("centroidsPath");
+            K = Integer.parseInt(conf.get("numClusters")); // Lấy số cụm từ cấu hình
 
+            String centroidsPath = conf.get("centroidsPath");
             if (centroidsPath != null) {
-                // Load centroids from HDFS if provided
                 FileSystem fs = FileSystem.get(conf);
                 try (BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(new Path(centroidsPath))))) {
                     String line;
@@ -94,8 +93,9 @@ public class KMeansClustering {
 
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
+        conf.set("numClusters", "5"); // Đặt số cụm K = 5
 
-        // Thay đổi centroidsPath thành đường dẫn HDFS chứa centroids
+        // Đường dẫn HDFS chứa centroids
         String centroidsPath = "/path/to/initial_centroids.csv";
         conf.set("centroidsPath", centroidsPath);
 
