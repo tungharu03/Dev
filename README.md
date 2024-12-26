@@ -13,6 +13,7 @@ import java.util.List;
 
 public class KMeansClustering {
 
+    // Lớp Mapper, xử lý các dòng dữ liệu và xác định centroid gần nhất
     public static class KMeansMapper extends Mapper<Object, Text, Text, Text> {
         private List<double[]> centroids = new ArrayList<>();
 
@@ -23,8 +24,8 @@ public class KMeansClustering {
             for (String centroid : centroidStrings) {
                 String[] values = centroid.split(",");
                 centroids.add(new double[]{
-                        Double.parseDouble(values[0].trim()),
-                        Double.parseDouble(values[1].trim()),
+                        Double.parseDouble(values[0].trim()), 
+                        Double.parseDouble(values[1].trim()), 
                         Double.parseDouble(values[2].trim())
                 });
             }
@@ -55,7 +56,7 @@ public class KMeansClustering {
 
             // Xác định điểm dữ liệu gần với centroid nào nhất
             double[] point = {age, income, score};
-            int centroid = 0;  // Đổi tên từ 'closestCentroid' thành 'centroid'
+            int centroid = 0;
             double minDistance = Double.MAX_VALUE;
 
             // Duyệt qua tất cả các centroid và tính khoảng cách Euclidean
@@ -67,9 +68,9 @@ public class KMeansClustering {
                 }
             }
 
-            // Gửi kết quả: ID của cluster, CustomerID và thông tin khách hàng
-            context.write(new Text(String.valueOf(centroid)),
-                    new Text(customerID + "," + age + "," + income + "," + score + "," + centroid));
+            // Gửi kết quả: chỉ thông tin khách hàng và ID của cluster
+            context.write(new Text(String.valueOf(customerID)), 
+                          new Text(customerID + "," + age + "," + income + "," + score + "," + centroid));
         }
 
         // Hàm tính khoảng cách Euclidean giữa điểm dữ liệu và centroid
@@ -86,9 +87,9 @@ public class KMeansClustering {
     public static class KMeansReducer extends Reducer<Text, Text, Text, Text> {
         @Override
         protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+            // Ghi thông tin khách hàng cùng với centroid vào output, không ghi thêm Cluster ID
             for (Text value : values) {
-                // Gửi thông tin khách hàng cùng với ID của cluster
-                context.write(value, new Text(key.toString()));
+                context.write(value, null); // Ghi thông tin khách hàng và centroid vào output
             }
         }
     }
@@ -119,6 +120,7 @@ public class KMeansClustering {
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
 
 
 
