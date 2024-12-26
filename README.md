@@ -412,3 +412,16 @@ ROW FORMAT DELIMITED
 FIELDS TERMINATED BY ','
 LINES TERMINATED BY '\n'
 LOCATION '/outputcluster'; 
+
+SELECT 
+    AVG(age) AS mean_age,
+    MIN(age) AS min_age,
+    MAX(age) AS max_age,
+    AVG(income) AS mean_income,
+    MIN(income) AS min_income,
+    MAX(income) AS max_income,
+    AVG(score) AS mean_score,
+    MIN(score) AS min_score,
+    MAX(score) AS max_score
+FROM phankhuckhachhang
+WHERE centroid = 0;
