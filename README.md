@@ -18,13 +18,13 @@ public class KMeansClustering {
 
         @Override
         protected void setup(Context context) throws IOException, InterruptedException {
-            String[] centroidStrings = context.getConfiguration().get("centroids").split(";\s*");
+            String[] centroidStrings = context.getConfiguration().get("centroids").trim().split(";\s*");
             for (String centroid : centroidStrings) {
                 String[] values = centroid.split(",");
                 centroids.add(new double[]{
-                        Double.parseDouble(values[0]),
-                        Double.parseDouble(values[1]),
-                        Double.parseDouble(values[2])
+                        Double.parseDouble(values[0].trim()),
+                        Double.parseDouble(values[1].trim()),
+                        Double.parseDouble(values[2].trim())
                 });
             }
         }
@@ -35,10 +35,8 @@ public class KMeansClustering {
             if (line.isEmpty() || line.startsWith("CustomerID")) return; // Skip header or empty lines
 
             String[] fields = line.split(",");
-            if (fields.length != 5) return; // Ensure correct format
+            if (fields.length < 5) return; // Ensure correct format
 
-            String customerID = fields[0].trim();
-            String gender = fields[1].trim();
             double age;
             double income;
             double score;
@@ -64,7 +62,7 @@ public class KMeansClustering {
 
             // Output format: Cluster ID, Customer Information
             context.write(new Text(String.valueOf(closestCentroid)),
-                    new Text(customerID + "," + gender + "," + age + "," + income + "," + score));
+                    new Text(age + "," + income + "," + score + "," + closestCentroid));
         }
 
         private double euclideanDistance(double[] point, double[] centroid) {
@@ -80,7 +78,7 @@ public class KMeansClustering {
         @Override
         protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
             for (Text value : values) {
-                // Append cluster ID to customer info
+                // Output customer info along with cluster ID
                 context.write(value, new Text(key.toString()));
             }
         }
@@ -110,6 +108,7 @@ public class KMeansClustering {
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
 
 
 
