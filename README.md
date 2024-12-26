@@ -16,7 +16,6 @@ public class KMeansClustering {
     public static class KMeansMapper extends Mapper<Object, Text, Text, Text> {
         private List<double[]> centroids = new ArrayList<>();
 
-        // Phương thức setup, được gọi một lần trước khi xử lý các dòng dữ liệu, để thiết lập các centroid
         @Override
         protected void setup(Context context) throws IOException, InterruptedException {
             String[] centroidStrings = context.getConfiguration().get("centroids").trim().split(";\s*");
@@ -30,69 +29,62 @@ public class KMeansClustering {
             }
         }
 
-        // Phương thức map, xử lý từng dòng dữ liệu và xác định centroid gần nhất
         @Override
         protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
             String line = value.toString().trim();
-            if (line.isEmpty()) return; // Bỏ qua dòng tiêu đề và dòng rỗng
+            if (line.isEmpty() || line.startsWith("CustomerID")) return; // Skip header or empty lines
 
             String[] fields = line.split(",");
-            if (fields.length < 5) return; // Kiểm tra định dạng dữ liệu
+            if (fields.length < 5) return; // Ensure correct format
 
             String customerID = fields[0].trim();
             double age;
             double income;
             double score;
             try {
-                // Chuyển đổi các giá trị số
                 age = Double.parseDouble(fields[2].trim());
                 income = Double.parseDouble(fields[3].trim());
                 score = Double.parseDouble(fields[4].trim());
             } catch (NumberFormatException e) {
-                return; // Bỏ qua nếu dữ liệu không hợp lệ
+                return; // Skip invalid numeric entries
             }
 
-            // Xác định điểm dữ liệu gần với centroid nào nhất
             double[] point = {age, income, score};
-            int centroid = 0;  // Đổi tên từ 'closestCentroid' thành 'centroid'
+            int closestCentroid = 0;
             double minDistance = Double.MAX_VALUE;
 
-            // Duyệt qua tất cả các centroid và tính khoảng cách Euclidean
             for (int i = 0; i < centroids.size(); i++) {
-                double distance = euclideanDistance(point, centroids.get(i)); // Tính khoảng cách Euclidean
+                double distance = euclideanDistance(point, centroids.get(i));
                 if (distance < minDistance) {
                     minDistance = distance;
-                    centroid = i;  // Đổi tên từ 'closestCentroid' thành 'centroid'
+                    closestCentroid = i;
                 }
             }
 
-            // Gửi kết quả: ID của cluster, CustomerID và thông tin khách hàng
-            context.write(new Text(String.valueOf(centroid)),
-                    new Text(customerID + "," + age + "," + income + "," + score + "," + centroid));
+            // Output format: Cluster ID, Customer ID, Customer Information
+            context.write(new Text(String.valueOf(closestCentroid)),
+                    new Text(customerID + "," + age + "," + income + "," + score + "," + closestCentroid));
         }
 
-        // Hàm tính khoảng cách Euclidean giữa điểm dữ liệu và centroid
         private double euclideanDistance(double[] point, double[] centroid) {
             double sum = 0.0;
             for (int i = 0; i < point.length; i++) {
                 sum += Math.pow(point[i] - centroid[i], 2);
             }
-            return Math.sqrt(sum); // Trả về khoảng cách Euclidean
+            return Math.sqrt(sum);
         }
     }
 
-    // Lớp Reducer, giúp gom nhóm kết quả theo Cluster ID
     public static class KMeansReducer extends Reducer<Text, Text, Text, Text> {
         @Override
         protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
             for (Text value : values) {
-                // Gửi thông tin khách hàng cùng với ID của cluster
+                // Output customer info along with cluster ID
                 context.write(value, new Text(key.toString()));
             }
         }
     }
 
-    // Phương thức main, thiết lập cấu hình và thực thi Job MapReduce
     public static void main(String[] args) throws Exception {
         if (args.length != 2) {
             System.err.println("Usage: KMeansClustering <input path> <output path>");
@@ -100,22 +92,21 @@ public class KMeansClustering {
         }
 
         Configuration conf = new Configuration();
-        // Cấu hình các centroid (giá trị ban đầu cho các cluster)
         conf.set("centroids", "45.2,26.3,20.9;40.3,87.4,18.2;32.7,86.5,82.1;43.1,54.8,49.8;25.3,25.7,79.4");
 
         Job job = Job.getInstance(conf, "KMeans Clustering");
         job.setJarByClass(KMeansClustering.class);
 
-        job.setMapperClass(KMeansMapper.class); // Đặt lớp Mapper
-        job.setReducerClass(KMeansReducer.class); // Đặt lớp Reducer
+        job.setMapperClass(KMeansMapper.class);
+        job.setReducerClass(KMeansReducer.class);
 
-        job.setOutputKeyClass(Text.class); // Kiểu khóa đầu ra
-        job.setOutputValueClass(Text.class); // Kiểu giá trị đầu ra
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(Text.class);
 
-        FileInputFormat.addInputPath(job, new Path(args[0])); // Đường dẫn dữ liệu đầu vào
-        FileOutputFormat.setOutputPath(job, new Path(args[1])); // Đường dẫn dữ liệu đầu ra
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
-        System.exit(job.waitForCompletion(true) ? 0 : 1); // Chạy job MapReduce và chờ kết quả
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
 
