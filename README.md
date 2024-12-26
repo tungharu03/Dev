@@ -386,3 +386,14 @@ FIELDS TERMINATED BY ',' ;
 
 LOAD DATA INPATH 'outputcluster/part-00000' INTO TABLE phankhuckhachhang;
 
+CREATE TABLE phankhuckhachhang (
+    customerID INT,
+    age DOUBLE,
+    income DOUBLE,
+    score DOUBLE,
+    centroid INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+LINES TERMINATED BY '\n'
+LOCATION '/outputcluster'; 
