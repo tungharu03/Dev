@@ -202,9 +202,9 @@ public class KMeansClustering {
                 }
             }
 
-            // Gửi kết quả: ID của cluster, CustomerID và thông tin khách hàng
-            context.write(new Text(String.valueOf(centroid)),
-                    new Text(customerID + "," + age + "," + income + "," + score + "," + centroid));
+            // Gửi kết quả: chỉ thông tin khách hàng và ID của cluster
+            context.write(new Text(String.valueOf(customerID)), 
+                          new Text(customerID + "," + age + "," + income + "," + score + "," + centroid));
         }
 
         // Hàm tính khoảng cách Euclidean giữa điểm dữ liệu và centroid
@@ -221,9 +221,9 @@ public class KMeansClustering {
     public static class KMeansReducer extends Reducer<Text, Text, Text, Text> {
         @Override
         protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+            // Ghi thông tin khách hàng cùng với centroid vào output
             for (Text value : values) {
-                // Gửi thông tin khách hàng cùng với ID của cluster
-                context.write(value, new Text(key.toString()));
+                context.write(value, null); // Ghi thông tin khách hàng và centroid
             }
         }
     }
@@ -254,6 +254,7 @@ public class KMeansClustering {
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
 
 
 hadoop jar /home/cloudera/KMeansMapReduce.jar KMeansMapReduce \
