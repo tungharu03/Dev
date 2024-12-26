@@ -1,5 +1,4 @@
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -8,9 +7,7 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,42 +15,40 @@ public class KMeansClustering {
 
     public static class KMeansMapper extends Mapper<Object, Text, Text, Text> {
         private List<double[]> centroids = new ArrayList<>();
-        private int K; // Số cụm
 
         @Override
         protected void setup(Context context) throws IOException, InterruptedException {
-            Configuration conf = context.getConfiguration();
-            K = Integer.parseInt(conf.get("numClusters")); // Lấy số cụm từ cấu hình
-
-            String centroidsPath = conf.get("centroidsPath");
-            if (centroidsPath != null) {
-                FileSystem fs = FileSystem.get(conf);
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(new Path(centroidsPath))))) {
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        String[] values = line.split(",");
-                        centroids.add(new double[]{
-                                Double.parseDouble(values[0]),
-                                Double.parseDouble(values[1]),
-                                Double.parseDouble(values[2])
-                        });
-                    }
-                }
-            } else {
-                throw new IOException("Centroids not provided. Ensure centroids are initialized.");
+            String[] centroidStrings = context.getConfiguration().get("centroids").split(";\s*");
+            for (String centroid : centroidStrings) {
+                String[] values = centroid.split(",");
+                centroids.add(new double[]{
+                        Double.parseDouble(values[0]),
+                        Double.parseDouble(values[1]),
+                        Double.parseDouble(values[2])
+                });
             }
         }
 
         @Override
         protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-            if (value.toString().startsWith("CustomerID")) return; // Skip header
+            String line = value.toString().trim();
+            if (line.isEmpty() || line.startsWith("CustomerID")) return; // Skip header or empty lines
 
-            String[] fields = value.toString().split(",");
-            String customerID = fields[0];
-            String gender = fields[1];
-            double age = Double.parseDouble(fields[2]);
-            double income = Double.parseDouble(fields[3]);
-            double score = Double.parseDouble(fields[4]);
+            String[] fields = line.split(",");
+            if (fields.length != 5) return; // Ensure correct format
+
+            String customerID = fields[0].trim();
+            String gender = fields[1].trim();
+            double age;
+            double income;
+            double score;
+            try {
+                age = Double.parseDouble(fields[2].trim());
+                income = Double.parseDouble(fields[3].trim());
+                score = Double.parseDouble(fields[4].trim());
+            } catch (NumberFormatException e) {
+                return; // Skip invalid numeric entries
+            }
 
             double[] point = {age, income, score};
             int closestCentroid = 0;
@@ -92,12 +87,13 @@ public class KMeansClustering {
     }
 
     public static void main(String[] args) throws Exception {
-        Configuration conf = new Configuration();
-        conf.set("numClusters", "5"); // Đặt số cụm K = 5
+        if (args.length != 2) {
+            System.err.println("Usage: KMeansClustering <input path> <output path>");
+            System.exit(-1);
+        }
 
-        // Đường dẫn HDFS chứa centroids
-        String centroidsPath = "/path/to/initial_centroids.csv";
-        conf.set("centroidsPath", centroidsPath);
+        Configuration conf = new Configuration();
+        conf.set("centroids", "45.2,26.3,20.9;40.3,87.4,18.2;32.7,86.5,82.1;43.1,54.8,49.8;25.3,25.7,79.4");
 
         Job job = Job.getInstance(conf, "KMeans Clustering");
         job.setJarByClass(KMeansClustering.class);
