@@ -362,3 +362,17 @@ public class KMeansClustering {
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
+
+CREATE TABLE phankhuckhachhang (
+    customerID STRING,
+    age DOUBLE,
+    income DOUBLE,
+    score DOUBLE,
+    centroid INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ',' ;
+
+LOAD DATA INPATH 'outputcluster/part-00000' INTO TABLE phankhuckhachhang;
+
