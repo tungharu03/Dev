@@ -430,6 +430,7 @@ import java.io.*;
 import java.util.*;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.*;
 import org.apache.hadoop.mapreduce.Job;
@@ -483,9 +484,19 @@ public class KMeansClustering {
 
         @Override
         protected void setup(Context context) throws IOException {
-            Path centroidPath = new Path(context.getConfiguration().get("centroid.path"));
-            BufferedReader reader = new BufferedReader(new InputStreamReader(centroidPath.getFileSystem(context.getConfiguration()).open(centroidPath)));
+            String centroidFilePath = context.getConfiguration().get("centroid.path");
+            if (centroidFilePath == null || centroidFilePath.isEmpty()) {
+                throw new IOException("Centroid file path is not set or empty.");
+            }
 
+            Path centroidPath = new Path(centroidFilePath);
+            FileSystem fs = centroidPath.getFileSystem(context.getConfiguration());
+
+            if (!fs.exists(centroidPath)) {
+                throw new IOException("Centroid file does not exist at: " + centroidPath);
+            }
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(centroidPath)));
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split(",");
@@ -540,7 +551,13 @@ public class KMeansClustering {
     }
 
     public static void main(String[] args) throws Exception {
+        if (args.length < 3) {
+            System.err.println("Usage: KMeansClustering <input path> <output path> <centroid path>");
+            System.exit(-1);
+        }
+
         Configuration conf = new Configuration();
+        conf.set("centroid.path", args[2]);
 
         Job job = Job.getInstance(conf, "K-Means Clustering");
         job.setJarByClass(KMeansClustering.class);
@@ -557,4 +574,5 @@ public class KMeansClustering {
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
 
