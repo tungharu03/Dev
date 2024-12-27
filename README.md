@@ -453,7 +453,9 @@ public class KMeansClustering {
         }
 
         public static double calculateDistance(Point p1, Point p2) {
-            return Math.sqrt(Math.pow(p1.age - p2.age, 2) + Math.pow(p1.income - p2.income, 2) + Math.pow(p1.score - p2.score, 2));
+            return Math.sqrt(Math.pow(p1.age - p2.age, 2) +
+                             Math.pow(p1.income - p2.income, 2) +
+                             Math.pow(p1.score - p2.score, 2));
         }
 
         @Override
@@ -467,19 +469,20 @@ public class KMeansClustering {
 
         @Override
         protected void setup(Context context) throws IOException {
-            // Load initial centroids from configuration
             Configuration conf = context.getConfiguration();
             String[] centroidStrings = conf.get("initial.centroids").split(";");
             for (String s : centroidStrings) {
                 String[] parts = s.split(",");
-                centroids.add(new Point(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]), Double.parseDouble(parts[2])));
+                centroids.add(new Point(Double.parseDouble(parts[0]), 
+                                        Double.parseDouble(parts[1]), 
+                                        Double.parseDouble(parts[2])));
             }
         }
 
         @Override
         protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
             if (value.toString().contains("CustomerID")) {
-                return; // Skip header row
+                return; // Bỏ qua dòng tiêu đề
             }
 
             String[] parts = value.toString().split(",");
@@ -491,6 +494,7 @@ public class KMeansClustering {
 
             int nearestCluster = 0;
             double minDistance = Double.MAX_VALUE;
+
             for (int i = 0; i < centroids.size(); i++) {
                 double distance = Point.calculateDistance(point, centroids.get(i));
                 if (distance < minDistance) {
@@ -532,10 +536,10 @@ public class KMeansClustering {
     }
 
     public static void main(String[] args) throws Exception {
-        int k = 5;
+        int k = 5; // Số cụm
         Configuration conf = new Configuration();
 
-        // Generate random initial centroids
+        // Khởi tạo các tâm cụm ban đầu
         Random random = new Random();
         StringBuilder initialCentroids = new StringBuilder();
         for (int i = 0; i < k; i++) {
@@ -570,7 +574,7 @@ public class KMeansClustering {
                 System.exit(1);
             }
 
-            // Check for convergence
+            // Kiểm tra điều kiện dừng
             converged = true;
             for (int i = 0; i < k; i++) {
                 long age = job.getCounters().findCounter("Centroids", Integer.toString(i)).getValue();
