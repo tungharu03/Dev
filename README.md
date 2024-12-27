@@ -613,4 +613,8 @@ print(np.round(model_km.cluster_centers_, 1))
 
 spark-submit --master spark://spark-master-cluster:7077 --deploy-mode client your_script.py
 
+pip install pyspark
+pip install scikit-learn
+pip install numpy
+pip install pandas
 
