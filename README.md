@@ -426,13 +426,15 @@ SELECT
 FROM phankhuckhachhang
 WHERE centroid = 0;
 
-import java.io.*;
-import java.util.*;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.*;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -441,27 +443,8 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 public class KMeansClustering {
 
-    public static class Centroid {
-        public double age;
-        public double income;
-        public double score;
-
-        public Centroid(double age, double income, double score) {
-            this.age = age;
-            this.income = income;
-            this.score = score;
-        }
-
-        @Override
-        public String toString() {
-            return age + "," + income + "," + score;
-        }
-    }
-
     public static class Point {
-        public double age;
-        public double income;
-        public double score;
+        public double age, income, score;
 
         public Point(double age, double income, double score) {
             this.age = age;
@@ -469,8 +452,8 @@ public class KMeansClustering {
             this.score = score;
         }
 
-        public static double calculateDistance(Point p, Centroid c) {
-            return Math.sqrt(Math.pow(p.age - c.age, 2) + Math.pow(p.income - c.income, 2) + Math.pow(p.score - c.score, 2));
+        public static double calculateDistance(Point p1, Point p2) {
+            return Math.sqrt(Math.pow(p1.age - p2.age, 2) + Math.pow(p1.income - p2.income, 2) + Math.pow(p1.score - p2.score, 2));
         }
 
         @Override
@@ -479,35 +462,23 @@ public class KMeansClustering {
         }
     }
 
-    public static class KMeansMapper extends Mapper<LongWritable, Text, IntWritable, Text> {
-        private List<Centroid> centroids = new ArrayList<>();
+    public static class KMeansMapper extends Mapper<Object, Text, IntWritable, Text> {
+        private List<Point> centroids = new ArrayList<>();
 
         @Override
         protected void setup(Context context) throws IOException {
-            String centroidFilePath = context.getConfiguration().get("centroid.path");
-            if (centroidFilePath == null || centroidFilePath.isEmpty()) {
-                throw new IOException("Centroid file path is not set or empty.");
+            // Load initial centroids from configuration
+            Configuration conf = context.getConfiguration();
+            String[] centroidStrings = conf.get("initial.centroids").split(";");
+            for (String s : centroidStrings) {
+                String[] parts = s.split(",");
+                centroids.add(new Point(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]), Double.parseDouble(parts[2])));
             }
-
-            Path centroidPath = new Path(centroidFilePath);
-            FileSystem fs = centroidPath.getFileSystem(context.getConfiguration());
-
-            if (!fs.exists(centroidPath)) {
-                throw new IOException("Centroid file does not exist at: " + centroidPath);
-            }
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(centroidPath)));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String[] parts = line.split(",");
-                centroids.add(new Centroid(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]), Double.parseDouble(parts[2])));
-            }
-            reader.close();
         }
 
         @Override
-        protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            if (key.get() == 0 && value.toString().contains("CustomerID")) {
+        protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+            if (value.toString().contains("CustomerID")) {
                 return; // Skip header row
             }
 
@@ -515,19 +486,20 @@ public class KMeansClustering {
             double age = Double.parseDouble(parts[2]);
             double income = Double.parseDouble(parts[3]);
             double score = Double.parseDouble(parts[4]);
+
             Point point = new Point(age, income, score);
 
-            int nearestCentroidIndex = 0;
+            int nearestCluster = 0;
             double minDistance = Double.MAX_VALUE;
             for (int i = 0; i < centroids.size(); i++) {
                 double distance = Point.calculateDistance(point, centroids.get(i));
                 if (distance < minDistance) {
                     minDistance = distance;
-                    nearestCentroidIndex = i;
+                    nearestCluster = i;
                 }
             }
 
-            context.write(new IntWritable(nearestCentroidIndex), new Text(point.toString()));
+            context.write(new IntWritable(nearestCluster), value);
         }
     }
 
@@ -537,42 +509,86 @@ public class KMeansClustering {
             double sumAge = 0, sumIncome = 0, sumScore = 0;
             int count = 0;
 
+            List<String> points = new ArrayList<>();
             for (Text value : values) {
+                points.add(value.toString());
                 String[] parts = value.toString().split(",");
-                sumAge += Double.parseDouble(parts[0]);
-                sumIncome += Double.parseDouble(parts[1]);
-                sumScore += Double.parseDouble(parts[2]);
+                sumAge += Double.parseDouble(parts[2]);
+                sumIncome += Double.parseDouble(parts[3]);
+                sumScore += Double.parseDouble(parts[4]);
                 count++;
             }
 
-            Centroid newCentroid = new Centroid(sumAge / count, sumIncome / count, sumScore / count);
-            context.write(key, new Text(newCentroid.toString()));
+            Point newCentroid = new Point(sumAge / count, sumIncome / count, sumScore / count);
+
+            for (String point : points) {
+                context.write(key, new Text(point));
+            }
+
+            context.getCounter("Centroids", key.toString()).setValue(Double.doubleToLongBits(newCentroid.age));
+            context.getCounter("Centroids", key.toString() + "_income").setValue(Double.doubleToLongBits(newCentroid.income));
+            context.getCounter("Centroids", key.toString() + "_score").setValue(Double.doubleToLongBits(newCentroid.score));
         }
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 3) {
-            System.err.println("Usage: KMeansClustering <input path> <output path> <centroid path>");
-            System.exit(-1);
+        int k = 5;
+        Configuration conf = new Configuration();
+
+        // Generate random initial centroids
+        Random random = new Random();
+        StringBuilder initialCentroids = new StringBuilder();
+        for (int i = 0; i < k; i++) {
+            double age = 18 + random.nextInt(40);
+            double income = 15 + random.nextInt(100);
+            double score = 1 + random.nextInt(100);
+            initialCentroids.append(age).append(",").append(income).append(",").append(score);
+            if (i < k - 1) {
+                initialCentroids.append(";");
+            }
+        }
+        conf.set("initial.centroids", initialCentroids.toString());
+
+        boolean converged = false;
+        int iteration = 0;
+
+        while (!converged) {
+            Job job = Job.getInstance(conf, "K-Means Clustering - Iteration " + iteration);
+            job.setJarByClass(KMeansClustering.class);
+            job.setMapperClass(KMeansMapper.class);
+            job.setReducerClass(KMeansReducer.class);
+
+            job.setOutputKeyClass(IntWritable.class);
+            job.setOutputValueClass(Text.class);
+
+            FileInputFormat.addInputPath(job, new Path(args[0]));
+            FileOutputFormat.setOutputPath(job, new Path(args[1] + "_iteration_" + iteration));
+
+            boolean success = job.waitForCompletion(true);
+
+            if (!success) {
+                System.exit(1);
+            }
+
+            // Check for convergence
+            converged = true;
+            for (int i = 0; i < k; i++) {
+                long age = job.getCounters().findCounter("Centroids", Integer.toString(i)).getValue();
+                long income = job.getCounters().findCounter("Centroids", Integer.toString(i) + "_income").getValue();
+                long score = job.getCounters().findCounter("Centroids", Integer.toString(i) + "_score").getValue();
+
+                String newCentroid = Double.longBitsToDouble(age) + "," + Double.longBitsToDouble(income) + "," + Double.longBitsToDouble(score);
+                if (!newCentroid.equals(initialCentroids.toString().split(";")[i])) {
+                    converged = false;
+                }
+            }
+
+            iteration++;
         }
 
-        Configuration conf = new Configuration();
-        conf.set("centroid.path", args[2]);
-
-        Job job = Job.getInstance(conf, "K-Means Clustering");
-        job.setJarByClass(KMeansClustering.class);
-
-        job.setMapperClass(KMeansMapper.class);
-        job.setReducerClass(KMeansReducer.class);
-
-        job.setOutputKeyClass(IntWritable.class);
-        job.setOutputValueClass(Text.class);
-
-        FileInputFormat.addInputPath(job, new Path(args[0]));
-        FileOutputFormat.setOutputPath(job, new Path(args[1]));
-
-        System.exit(job.waitForCompletion(true) ? 0 : 1);
+        System.out.println("K-Means Clustering completed in " + iteration + " iterations.");
     }
 }
+
 
 
