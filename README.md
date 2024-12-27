@@ -611,5 +611,6 @@ model_km.fit(df_features)
 print(np.round(model_km.cluster_centers_, 1))
 
 
+spark-submit --master spark://spark-master-cluster:7077 --deploy-mode client your_script.py
 
 
