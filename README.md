@@ -590,5 +590,54 @@ public class KMeansClustering {
     }
 }
 
+from pyspark.sql import SparkSession
+from pyspark.ml.clustering import KMeans
+from pyspark.ml.feature import VectorAssembler
+
+# 1. Tạo SparkSession
+spark = SparkSession.builder \
+    .appName("KMeansClustering") \
+    .master("yarn") \
+    .getOrCreate()
+
+# 2. Đọc dữ liệu từ mall_customers.csv
+data = spark.read.csv("mall_customers.csv", header=True, inferSchema=True)
+
+# Hiển thị dữ liệu
+data.show()
+
+# 3. Chuyển đổi các cột thành vector
+# Chỉ sử dụng các cột số liệu "Age", "Annual Income (k$)", "Spending Score (1-100)" để phân cụm
+assembler = VectorAssembler(inputCols=["Age", "Annual Income (k$)", "Spending Score (1-100)"], outputCol="features")
+vector_data = assembler.transform(data)
+
+# Chỉ chọn cột "features"
+final_data = vector_data.select("features")
+
+# 4. Áp dụng mô hình K-Means với 5 cụm
+kmeans = KMeans(k=5, seed=8)
+model = kmeans.fit(final_data)
+
+# In ra các tâm cụm
+centers = model.clusterCenters()
+print("Centers:")
+for center in centers:
+    print(center)
+
+# Dự đoán cụm cho từng điểm dữ liệu
+predictions = model.transform(final_data)
+predictions.show()
+
+# 5. Lưu kết quả phân cụm (Tùy chọn)
+# Thêm ID và lưu kết quả phân cụm
+results = data.join(predictions, data.index == predictions.index) \
+    .select("CustomerID", "Age", "Annual Income (k$)", "Spending Score (1-100)", "prediction")
+
+# Lưu kết quả phân cụm vào file CSV
+results.write.csv("kmeans_results.csv", header=True)
+
+# Tắt SparkSession
+spark.stop()
+
 
 
